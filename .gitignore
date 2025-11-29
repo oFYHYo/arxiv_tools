@@ -7,3 +7,5 @@ develop/
 data/
 *.pyc
 *.egg-info
+log/
+tmp/

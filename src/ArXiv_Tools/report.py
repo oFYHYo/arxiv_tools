@@ -1,11 +1,9 @@
 import os
 from copy import deepcopy
-from unicodedata import category
 from .arxiv_index_fetch import query_arxiv_dict
 from .zotero_query import zotero_query
 from .codex import replace_characters, quant_ph
 from . import arxiv_logger
-import logging
 
 logger = arxiv_logger
 
@@ -20,7 +18,79 @@ def _get_arxiv_url(arxiv_id):
     arxiv_url = f'{root_url}{arg}'
     return arxiv_url
 
-def _gen_arxiv_markdown(arxiv_id, title, authors, abstract):
+def _generate_ai_summary(title, abstract, provider='gemini'):
+    """Generate AI summary using specified provider"""
+
+    prompt = f"""Summarize this research paper in 2-3 concise sentences, focusing on:
+                    1. Main contribution/finding
+                    2. Key methodology or approach
+                    3. Potential impact or significance
+
+                    Title: {title}
+
+                    Abstract: {abstract}
+
+                    Translate English to Chinese.Provide only the translated summary, no preamble."""
+    
+    prompt_title = f'''Based on the title summary provided below, translate the title of this article into Chinese.:
+
+                        Title:{title}
+    
+                        Abstract:{abstract}
+
+                        Provide only the translated title, no preamble.'''
+    
+    if provider == 'claude':
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return message.content[0].text
+        except Exception as e:
+            logger.warning(f"Failed to generate Claude summary: {e}")
+            return None
+            
+    elif provider == 'openai':
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            logger.warning(f"Failed to generate OpenAI summary: {e}")
+            return None
+            
+    elif provider == 'gemini':
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            
+            response = model.generate_content(prompt)
+
+            model_title = genai.GenerativeModel('gemini-2.5-flash-lite')
+
+            response_title = model_title.generate_content(prompt_title)
+
+            return response.text, response_title.text
+        except Exception as e:
+            logger.warning(f"Failed to generate Gemini summary: {e}")
+            return None
+    else:
+        logger.warning(f"Unknown AI provider: {provider}")
+        return None
+
+def _gen_arxiv_markdown(arxiv_id, title, authors, abstract, include_ai_summary=False, ai_provider='gemini'):
     arxiv_link_text = '[' + arxiv_id+ ']' + '(' + _get_arxiv_url(arxiv_id) + ')'
     title_text = title
     author_text = ''
@@ -29,6 +99,21 @@ def _gen_arxiv_markdown(arxiv_id, title, authors, abstract):
     abstract_text = abstract
     for key in replace_characters:
         abstract_text = abstract_text.replace(key, replace_characters[key])
+    
+    # Generate AI summary if requested
+    ai_summary_section = ''
+    title_translate = ''
+    if include_ai_summary:
+        ai_summary, ai_title = _generate_ai_summary(title, abstract, ai_provider)
+        if ai_summary:
+            title_translate = f'''Title:  {ai_title}'''
+            ai_summary_section = f'''
+> [!quote]- AI Summary ({ai_provider}):
+> {ai_summary}
+
+'''
+            
+    
     arxiv_markdown = f'''
 ### {arxiv_id}
 
@@ -38,31 +123,38 @@ Links:
 
 Title:  {title_text}
 
-Authors:  {author_text}
+{title_translate}
 
-Abstract: 
+Authors:  {author_text}
+{ai_summary_section}
+
 > [!quote]- Abstract
 > {abstract_text}
 
 
 '''
+    
     return arxiv_markdown
 
 
-def _gen_data(arxiv_dict, Zot_=None):
+def _gen_data(arxiv_dict, Zot_=None, include_ai_summary=False, ai_provider='gemini'):
     collect_dict = {}
     not_collect_dict = {}
-    # TO-DO
-    # update_dict = {} 
+    
     for _, (arxiv_id, (title, authors, abstract, external_)) in enumerate(arxiv_dict.items()):
         arxiv_doi = _get_arxiv_doi(arxiv_id)
         try:
             query_res = Zot_.query_('DOI', arxiv_doi)
         except:
             query_res = []
-        if query_res.__len__() :
+        
+        markdown_content = _gen_arxiv_markdown(
+            arxiv_id, title, authors, abstract, include_ai_summary, ai_provider
+        )
+        
+        if query_res.__len__():
             last_ok = query_res
-            collect_dict[arxiv_id] =  _gen_arxiv_markdown(arxiv_id, title, authors, abstract)
+            collect_dict[arxiv_id] = markdown_content
         else:
             if external_.__len__() == 2:
                 external_doi = external_[0]
@@ -70,25 +162,25 @@ def _gen_data(arxiv_dict, Zot_=None):
                     query_res = Zot_.query_('DOI', external_doi)
                 except:
                     query_res = []
-                if query_res.__len__() :
+                if query_res.__len__():
                     last_ok = query_res
-                    collect_dict[arxiv_id] =  _gen_arxiv_markdown(arxiv_id, title, authors, abstract)
+                    collect_dict[arxiv_id] = markdown_content
                 else:
-                    not_collect_dict[arxiv_id] =  _gen_arxiv_markdown(arxiv_id, title, authors, abstract)
+                    not_collect_dict[arxiv_id] = markdown_content
             else:
-                not_collect_dict[arxiv_id] =  _gen_arxiv_markdown(arxiv_id, title, authors, abstract)
+                not_collect_dict[arxiv_id] = markdown_content
     return collect_dict, not_collect_dict
 
 
-def _gen_oneday_markdown(date_string, oneday_arxiv_dict, Zot_, old_data=None):
+def _gen_oneday_markdown(date_string, oneday_arxiv_dict, Zot_, old_data=None, include_ai_summary=False, ai_provider='gemini'):
 
     oneday_arxiv_dict = deepcopy(oneday_arxiv_dict)
     category = oneday_arxiv_dict['category']
     del oneday_arxiv_dict['category']
-    collect_dict, not_collect_dict= _gen_data(oneday_arxiv_dict, Zot_)
+    collect_dict, not_collect_dict = _gen_data(oneday_arxiv_dict, Zot_, include_ai_summary, ai_provider)
 
     new_data = []
-    date_markdown = f'# {date_string} preprint by arxiv_tools\n\n'
+    date_markdown = f'# {date_string} preprint by arxiv_tools\n\nThere are a total of {oneday_arxiv_dict.__len__()} articles today.\n\n'
     date_markdown +=  f'''
 ---
 tags:
@@ -152,8 +244,21 @@ def parse_old_report(file_path):
     else:
         return None
         
-def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=quant_ph, category='quant-ph'):
-
+def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=quant_ph, 
+                       category='quant-ph', include_ai_summary=False, ai_provider='gemini', specific_day=None):
+    """
+    Fetch arXiv papers and generate markdown reports
+    
+    Args:
+        year: Year to fetch
+        month: Month to fetch
+        md_folder: Folder to save markdown files
+        query_args: Query arguments for arXiv API
+        category: ArXiv category
+        include_ai_summary: Whether to generate AI summaries
+        ai_provider: AI provider to use (claude/openai/gemini)
+        specific_day: If set, only fetch this specific day (1-31). If None, fetch all days in month
+    """
     try:
         Zot_ = zotero_query() # default local use
         Zot_.get_everything()
@@ -161,11 +266,18 @@ def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=q
         Zot_ = None
     root_dir = md_folder
     
-    for i in range(31):
-        day = i + 1
+    # Determine which days to process
+    if specific_day is not None:
+        # Process only the specific day
+        days_to_process = [specific_day]
+    else:
+        # Process all days in the month (1-31)
+        days_to_process = range(1, 32)
+    
+    for day in days_to_process:
         date_from_date = f'{year}-{month:02}-{day:02}'
         date_to_date = f'{year}-{month:02}-{day+1:02}'
-        # print(date_from_date, date_to_date)
+        
         arxiv_dict = query_arxiv_dict(date_from_date, date_to_date, query_args)
         
         if arxiv_dict.__len__():
@@ -173,17 +285,22 @@ def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=q
             logger.info(f'{arxiv_dict.__len__() - 1}')
             year_dir = os.path.join(root_dir, f'{year}')
             month_dir = os.path.join(year_dir, f'{month:02}')
-            # date_dir = os.path.join(month_dir, f'{day:02}')
             os.makedirs(month_dir, exist_ok=True)
             date_string = f'{year}-{month:02}-{day:02}'
-            logger.info(f'processing {date_from_date}, total num: {arxiv_dict.__len__()} -1 ')
+            logger.info(f'Processing {date_from_date}, total num: {arxiv_dict.__len__()} -1 ')
             oneday_report_file = os.path.join(month_dir, f'{day:02}.md')
             parse_old = parse_old_report(oneday_report_file)
-            # print(parse_old)
-            markdown_str = _gen_oneday_markdown(date_string, arxiv_dict, Zot_, parse_old)
-            # print(markdown_str)
+            
+            markdown_str = _gen_oneday_markdown(
+                date_string, arxiv_dict, Zot_, parse_old, include_ai_summary, ai_provider
+            )
+            
             with open(
                 oneday_report_file, 
                 "w", encoding="utf-8"
             ) as f:
                 f.write(markdown_str)
+        else:
+            # Only log if we're processing a specific day (avoid spam for whole month)
+            if specific_day is not None:
+                logger.info(f'No papers found for {date_from_date}')
