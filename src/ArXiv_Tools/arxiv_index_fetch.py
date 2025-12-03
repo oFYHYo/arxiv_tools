@@ -3,8 +3,10 @@ from urllib.parse import urlencode
 import feedparser
 
 from bs4 import BeautifulSoup
-
+from . import arxiv_logger
 from .codex import quant_ph
+
+logger = arxiv_logger
 sub = 'quant-ph'
 
 search_url = 'https://arxiv.org/search/advanced?'
@@ -26,7 +28,8 @@ def query_arxiv_dict(date_from_date='2025-02-01', date_to_date='2025-02-02', que
     # print(url_args)
 
     url = search_url + url_args
-
+    # print(url)
+    logger.info(f'Querying ArXiv URL: {url}')
     results = feedparser.parse(url)
 
     summary_text = results['feed']['summary']

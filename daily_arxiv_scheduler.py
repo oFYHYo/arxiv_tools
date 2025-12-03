@@ -20,7 +20,7 @@ AI_PROVIDER = "gemini"
 
 # 日志配置
 LOG_FILE = "/root/software/zawu/arxiv_tools/log/arxiv_daily_fetch.log"
-RUN_TIME = "02:00"  # 设定每天运行的时间 (24小时制)
+RUN_TIME = "10:00"  # 设定每天运行的时间 (24小时制)
 
 # API Keys (如果需要从环境变量加载，保持 os.environ.get，或者直接填入字符串)
 # os.environ["GOOGLE_API_KEY"] = "你的KEY" 
@@ -52,8 +52,10 @@ def job():
     logger.info("Starting ArXiv Daily Fetch Task")
     
     # 1. 计算日期 (对应 shell: date -d '-1 days' +%Y.%m.%d)
-    # 原脚本逻辑是获取 "前天" 的日期
-    target_date = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y.%m.%d")
+    target_date = (datetime.datetime.now() - datetime.timedelta(days=0)).strftime("%Y.%m.%d")
+    target_date_1 = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y.%m.%d")
+    target_date_2 = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime("%Y.%m.%d")
+    target_date_3 = (datetime.datetime.now() - datetime.timedelta(days=3)).strftime("%Y.%m.%d")
     logger.info(f"Fetching papers for date: {target_date}")
 
     # 2. 检查项目目录
@@ -66,7 +68,7 @@ def job():
     cmd = [
         PYTHON_PATH,
         SCRIPT_NAME,
-        "--time", target_date,
+        "--time", f'{target_date},{target_date_1},{target_date_2},{target_date_3}',
         "--categroy", CATEGORY, # 注意：原脚本里拼写是 --categroy，如果那是笔误请修正为 --category
         "--ai_summary",
         "--ai_provider", AI_PROVIDER,

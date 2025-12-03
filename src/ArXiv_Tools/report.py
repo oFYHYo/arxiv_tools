@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timedelta
 from copy import deepcopy
 from .arxiv_index_fetch import query_arxiv_dict
 from .zotero_query import zotero_query
@@ -21,24 +22,26 @@ def _get_arxiv_url(arxiv_id):
 def _generate_ai_summary(title, abstract, provider='gemini'):
     """Generate AI summary using specified provider"""
 
-    prompt = f"""Summarize this research paper in 2-3 concise sentences, focusing on:
-                    1. Main contribution/finding
-                    2. Key methodology or approach
-                    3. Potential impact or significance
+    prompt = f"""Summarize this arXiv physics paper (chem-ph / quant-ph) in 2–3 concise sentences, focusing on:
+                1. The central scientific problem and the main contribution of the work.
+                2. The core theoretical framework, computational method, or experimental approach used.
+                3. The relevance or potential impact for electronic structure theory, quantum chemistry, condensed matter physics, or quantum information.
+
+                Title: {title}
+
+                Abstract: {abstract}
+
+                Translate English to Chinese and output only the Chinese text. Provide only the translated summary, no preamble, no commentary, no additional text.
+                """
+    
+    prompt_title = f'''Based on the scientific context inferred from the title and abstract below, translate the article's title into accurate and domain-appropriate Chinese, ensuring correct usage of physics, quantum chemistry, and quantum information terminology.
 
                     Title: {title}
 
                     Abstract: {abstract}
 
-                    Translate English to Chinese.Provide only the translated summary, no preamble."""
-    
-    prompt_title = f'''Based on the title summary provided below, translate the title of this article into Chinese.:
-
-                        Title:{title}
-    
-                        Abstract:{abstract}
-
-                        Provide only the translated title, no preamble.'''
+                    Provide only the translated title, no preamble, no explanation, no additional text.
+                    '''
     
     if provider == 'claude':
         try:
@@ -74,12 +77,26 @@ def _generate_ai_summary(title, abstract, provider='gemini'):
         try:
             import google.generativeai as genai
             genai.configure(api_key=os.environ.get("GOOGLE_API_KEY"))
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            summary_model = 'gemini-2.5-pro'
+            translation_model = 'gemini-2.5-flash'
+            summary_config = genai.GenerationConfig(
+            temperature=0.2,        # 低温，保证事实准确，但允许少量语言润色
+            top_p=0.95,             # 保持默认或稍高，确保覆盖主要逻辑
+            top_k=40,
+            # max_output_tokens=8192, # 给予充足的输出空间
+        )
+            
+            translation_config = genai.GenerationConfig(
+            temperature=0.1,       # 接近 0，追求确定性和术语的精准对应
+            top_p=1.0,             # 不进行截断，考虑所有可能性中最优的
+            # max_output_tokens=256, # 标题通常很短，限制长度防止废话
+        )
+
+            model = genai.GenerativeModel(summary_model,generation_config=summary_config)
             
             response = model.generate_content(prompt)
 
-            model_title = genai.GenerativeModel('gemini-2.5-flash-lite')
-
+            model_title = genai.GenerativeModel(translation_model,generation_config=translation_config)
             response_title = model_title.generate_content(prompt_title)
 
             return response.text, response_title.text
@@ -276,12 +293,13 @@ def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=q
     
     for day in days_to_process:
         date_from_date = f'{year}-{month:02}-{day:02}'
-        date_to_date = f'{year}-{month:02}-{day+1:02}'
-        
+        d = datetime.strptime(date_from_date, "%Y-%m-%d")
+        date_to_date = (d + timedelta(days=1)).strftime("%Y-%m-%d")
         arxiv_dict = query_arxiv_dict(date_from_date, date_to_date, query_args)
         
         if arxiv_dict.__len__():
             arxiv_dict['category'] = category
+            # print(arxiv_dict)
             logger.info(f'{arxiv_dict.__len__() - 1}')
             year_dir = os.path.join(root_dir, f'{year}')
             month_dir = os.path.join(year_dir, f'{month:02}')
