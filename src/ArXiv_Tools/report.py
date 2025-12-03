@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 from copy import deepcopy
-from .arxiv_index_fetch import query_arxiv_dict
+from .arxiv_index_fetch import query_arxiv_dict,query_arxiv_catchup_dict
 from .zotero_query import zotero_query
 from .codex import replace_characters, quant_ph
 from . import arxiv_logger
@@ -262,7 +262,7 @@ def parse_old_report(file_path):
         return None
         
 def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=quant_ph, 
-                       category='quant-ph', include_ai_summary=False, ai_provider='gemini', specific_day=None):
+                       category='quant-ph', include_ai_summary=False, ai_provider='gemini', specific_day=None, use_url='catchup'):
     """
     Fetch arXiv papers and generate markdown reports
     
@@ -293,9 +293,14 @@ def filter_arxiv_to_md(year: int, month: int, md_folder: str, query_args: dict=q
     
     for day in days_to_process:
         date_from_date = f'{year}-{month:02}-{day:02}'
-        d = datetime.strptime(date_from_date, "%Y-%m-%d")
-        date_to_date = (d + timedelta(days=1)).strftime("%Y-%m-%d")
-        arxiv_dict = query_arxiv_dict(date_from_date, date_to_date, query_args)
+        
+        if use_url == 'advance':
+            d = datetime.strptime(date_from_date, "%Y-%m-%d")
+            date_to_date = (d + timedelta(days=1)).strftime("%Y-%m-%d")
+            arxiv_dict = query_arxiv_dict(date_from_date, date_to_date, query_args) # Use advance search url
+
+        elif use_url == 'catchup':
+            arxiv_dict = query_arxiv_catchup_dict(date=date_from_date, query_args=query_args) # Use catchup url
         
         if arxiv_dict.__len__():
             arxiv_dict['category'] = category

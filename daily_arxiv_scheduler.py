@@ -53,9 +53,9 @@ def job():
     
     # 1. 计算日期 (对应 shell: date -d '-1 days' +%Y.%m.%d)
     target_date = (datetime.datetime.now() - datetime.timedelta(days=0)).strftime("%Y.%m.%d")
-    target_date_1 = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y.%m.%d")
-    target_date_2 = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime("%Y.%m.%d")
-    target_date_3 = (datetime.datetime.now() - datetime.timedelta(days=3)).strftime("%Y.%m.%d")
+    # target_date_1 = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y.%m.%d")
+    # target_date_2 = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime("%Y.%m.%d")
+    # target_date_3 = (datetime.datetime.now() - datetime.timedelta(days=3)).strftime("%Y.%m.%d")
     logger.info(f"Fetching papers for date: {target_date}")
 
     # 2. 检查项目目录
@@ -68,7 +68,7 @@ def job():
     cmd = [
         PYTHON_PATH,
         SCRIPT_NAME,
-        "--time", f'{target_date},{target_date_1},{target_date_2},{target_date_3}',
+        "--time", target_date,
         "--categroy", CATEGORY, # 注意：原脚本里拼写是 --categroy，如果那是笔误请修正为 --category
         "--ai_summary",
         "--ai_provider", AI_PROVIDER,

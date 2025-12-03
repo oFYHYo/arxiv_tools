@@ -74,6 +74,11 @@ Time format examples:
                         help="Generate AI summaries for papers")
     parser.add_argument("--ai_provider", default='claude', choices=['claude', 'openai', 'gemini'],
                         help="AI provider for summaries (claude/openai/gemini)")
+    parser.add_argument("--use_url", default='catchup', choices=['advance', 'catchup'],
+                        help='''URL type for fetching arXiv data. 
+
+                            advance:  https://arxiv.org/search/advanced
+                            catchup:  https://arxiv.org/catchup ''')
 
     args = parser.parse_args() 
     arxiv_folder = args.arxiv_folder
@@ -81,6 +86,7 @@ Time format examples:
     time_ = args.time
     ai_summary = args.ai_summary
     ai_provider = args.ai_provider
+    use_url = args.use_url
     
     # Display settings
     logger.info(f"AI Summary: {'Enabled' if ai_summary else 'Disabled'}")
@@ -114,7 +120,8 @@ Time format examples:
                     category=cat_,
                     include_ai_summary=ai_summary,
                     ai_provider=ai_provider,
-                    specific_day=None
+                    specific_day=None,
+                    use_url=use_url
                 )
             else:
                 # Process specific day
@@ -127,5 +134,6 @@ Time format examples:
                     category=cat_,
                     include_ai_summary=ai_summary,
                     ai_provider=ai_provider,
-                    specific_day=day
+                    specific_day=day,
+                    use_url=use_url
                 )
